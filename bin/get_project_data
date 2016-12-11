@@ -1,0 +1,104 @@
+#!/usr/bin/env ruby
+
+# https://developer.github.com/early-access/graphql/explorer/
+# https://stackoverflow.com/questions/39666940/how-to-batch-github-graphql-api-queries
+
+require 'graphql/client'
+require 'graphql/client/http'
+
+module Kernel
+  # File activesupport/lib/active_support/core_ext/kernel/singleton_class.rb, line 3
+  def class_eval(*args, &block)
+    singleton_class.class_eval(*args, &block)
+  end
+end
+
+module GitHub
+  HTTPAdapter = GraphQL::Client::HTTP.new("https://api.github.com/graphql") do
+    def headers(context)
+      unless token = context[:access_token] || ENV['GITHUB_ACCESS_TOKEN']
+        # $ GITHUB_ACCESS_TOKEN=abc123
+        #   https://help.github.com/articles/creating-an-access-token-for-command-line-use
+        # Get temporary access token from ~/.config/hub
+        fail 'Missing GitHub access token. Get temporary access token from ~/.config/hub'
+      end
+
+      {
+        'Authorization' => "Bearer #{token}"
+      }
+    end
+  end
+
+  Client = GraphQL::Client.new(
+    schema: "github/graphql/schema.json",
+    execute: HTTPAdapter
+  )
+end
+
+query = <<~QUERY
+  query {
+    repositoryOwner(login: "eliotsykes") {
+      repository(name:"rspec-rails-examples") {
+        description
+      }
+    }
+  }
+QUERY
+
+definition = GitHub::Client.parse(query)
+variables = {}
+client_context = { access_token: ENV['GITHUB_ACCESS_TOKEN'] }
+
+response = GitHub::Client.query(definition, variables: variables, context: client_context)
+
+case response
+when GraphQL::Client::SuccessfulResponse
+  response.data
+when GraphQL::Client::FailedResponse
+  raise response.errors
+end
+
+# require 'pry'
+# binding.pry
+p response.data
+p response.data.repository_owner.repository.description
+# {
+#   query1: repositoryOwner(login: "eliotsykes") {
+#     repository(name:"rspec-rails-examples") {
+#     	name
+#     	description
+#       descriptionHTML
+#       homepageURL
+#     }
+#   }
+#   query2: repositoryOwner(login: "eliotsykes") {
+#     repository(name:"real-world-rails") {
+#     	name
+#     	description
+#       descriptionHTML
+#       homepageURL
+#     }
+#   }
+# }
+#
+# ---
+#
+# query {
+#   query1: repositoryOwner(login: "eliotsykes") {
+#     repository(name: "rspec-rails-examples") {
+#     	...RepoFragment
+#     }
+#   }
+#   query2: repositoryOwner(login: "eliotsykes") {
+#     repository(name: "real-world-rails") {
+#     	...RepoFragment
+#     }
+#   }
+# }
+#
+# fragment RepoFragment on Repository {
+#   name
+#   description
+#   descriptionHTML
+#   homepageURL
+# }
