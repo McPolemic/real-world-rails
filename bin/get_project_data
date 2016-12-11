@@ -39,18 +39,28 @@ module GitHub
   end
 
   Client = GraphQL::Client.new(schema: Schema, execute: HTTP)
-  Query = GitHub::Client.parse <<-'QUERY'
+
+  repos = [
+    {login: 'eliotsykes', name: 'rspec-rails-examples'},
+    {login: 'eliotsykes', name: 'real-world-rails'}
+  ]
+
+  query_body = repos.inject('') do |q, repo|
+    query_id = "#{repo[:login]}__#{repo[:name]}".gsub('-', '_')
+    q << <<-QUERY
+      #{query_id}: repositoryOwner(login: "#{repo[:login]}") {
+        repository(name: "#{repo[:name]}") {
+          ...RepoFragment
+        }
+      }
+    QUERY
+  end
+
+  puts query_body
+
+  Query = GitHub::Client.parse <<-QUERY
     query {
-      query1: repositoryOwner(login: "eliotsykes") {
-        repository(name: "rspec-rails-examples") {
-        	...RepoFragment
-        }
-      }
-      query2: repositoryOwner(login: "eliotsykes") {
-        repository(name: "real-world-rails") {
-        	...RepoFragment
-        }
-      }
+      #{query_body}
     }
 
     fragment RepoFragment on Repository {
