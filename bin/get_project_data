@@ -13,34 +13,6 @@ module Kernel
   end
 end
 
-module GitHub
-  HTTP = GraphQL::Client::HTTP.new("https://api.github.com/graphql") do
-    def headers(context)
-      unless token = context[:access_token] || ENV['GITHUB_ACCESS_TOKEN']
-        # $ GITHUB_ACCESS_TOKEN=abc123
-        #   https://help.github.com/articles/creating-an-access-token-for-command-line-use
-        # Get temporary access token from ~/.config/hub
-        fail 'Missing GitHub access token. Get temporary access token from ~/.config/hub'
-      end
-
-      {
-        'Authorization' => "Bearer #{token}"
-      }
-    end
-  end
-
-  fetch_latest_schema = false
-
-  if fetch_latest_schema
-    Schema = GraphQL::Client.load_schema(HTTP)
-    GraphQL::Client.dump_schema(HTTP, "lib/github/graphql/schema.json")
-  else
-    Schema = GraphQL::Client.load_schema("lib/github/graphql/schema.json")
-  end
-
-  # Client = GraphQL::Client.new(schema: "lib/github/graphql/schema.json", execute: HTTP)
-  Client = GraphQL::Client.new(schema: Schema, execute: HTTP)
-end
 
 query1 = <<-'QUERY1'
   query {
@@ -99,21 +71,76 @@ fragment RepoFragment on Repository {
 }
 QUERY3
 
-definition = GitHub::Client.parse(query3)
+module GitHub
+  HTTP = GraphQL::Client::HTTP.new("https://api.github.com/graphql") do
+    def headers(context)
+      unless token = context[:access_token] || ENV['GITHUB_ACCESS_TOKEN']
+        # $ GITHUB_ACCESS_TOKEN=abc123
+        #   https://help.github.com/articles/creating-an-access-token-for-command-line-use
+        # Get temporary access token from ~/.config/hub
+        fail 'Missing GitHub access token. Get temporary access token from ~/.config/hub'
+      end
+
+      {
+        'Authorization' => "Bearer #{token}"
+      }
+    end
+  end
+
+  fetch_latest_schema = false
+
+  if fetch_latest_schema
+    Schema = GraphQL::Client.load_schema(HTTP)
+    GraphQL::Client.dump_schema(HTTP, "lib/github/graphql/schema.json")
+  else
+    Schema = GraphQL::Client.load_schema("lib/github/graphql/schema.json")
+  end
+
+  # Client = GraphQL::Client.new(schema: "lib/github/graphql/schema.json", execute: HTTP)
+  Client = GraphQL::Client.new(schema: Schema, execute: HTTP)
+  Query = GitHub::Client.parse <<-'QUERY3'
+    query {
+      query1: repositoryOwner(login: "eliotsykes") {
+        repository(name: "rspec-rails-examples") {
+        	...RepoFragment
+        }
+      }
+      query2: repositoryOwner(login: "eliotsykes") {
+        repository(name: "real-world-rails") {
+        	...RepoFragment
+        }
+      }
+    }
+
+    fragment RepoFragment on Repository {
+      name
+      description
+      descriptionHTML
+      homepageURL
+    }
+  QUERY3
+end
+
 variables = {}
 client_context = { access_token: ENV['GITHUB_ACCESS_TOKEN'] }
 
-response = GitHub::Client.query(definition, variables: variables, context: client_context)
+response = GitHub::Client.query(GitHub::Query, variables: variables, context: client_context)
 
-case response
-when GraphQL::Client::SuccessfulResponse
-  response.data
-when GraphQL::Client::FailedResponse
-  raise response.errors
+raise response.errors if response.errors.any?
+
+# require 'pry'
+# binding.pry
+# p response.data.query1.data
+# p response.data.query2.data
+
+response.data.data.each do |query_id, result|
+  puts query_id
+  result['repository'].each do |field, value|
+    puts "#{field}: #{value}"
+  end
+  puts '-'*80
 end
 
-p response.data.query1.data
-p response.data.query2.data
 # p response.data
 # puts response.data.repository_owner.repository.data.values.join("\n")
 # p response.data.repository_owner.repository.description
