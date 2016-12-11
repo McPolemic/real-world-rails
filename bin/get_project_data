@@ -13,64 +13,6 @@ module Kernel
   end
 end
 
-
-query1 = <<-'QUERY1'
-  query {
-    repositoryOwner(login: "eliotsykes") {
-      repository(name:"rspec-rails-examples") {
-        name
-      	description
-        descriptionHTML
-        homepageURL
-      }
-    }
-  }
-QUERY1
-
-query2 = <<-'QUERY2'
-  {
-    query1: repositoryOwner(login: "eliotsykes") {
-      repository(name:"rspec-rails-examples") {
-      	name
-      	description
-        descriptionHTML
-        homepageURL
-      }
-    }
-
-    query2: repositoryOwner(login: "eliotsykes") {
-      repository(name:"real-world-rails") {
-      	name
-      	description
-        descriptionHTML
-        homepageURL
-      }
-    }
-  }
-QUERY2
-
-query3 = <<-'QUERY3'
-query {
-  query1: repositoryOwner(login: "eliotsykes") {
-    repository(name: "rspec-rails-examples") {
-    	...RepoFragment
-    }
-  }
-  query2: repositoryOwner(login: "eliotsykes") {
-    repository(name: "real-world-rails") {
-    	...RepoFragment
-    }
-  }
-}
-
-fragment RepoFragment on Repository {
-  name
-  description
-  descriptionHTML
-  homepageURL
-}
-QUERY3
-
 module GitHub
   HTTP = GraphQL::Client::HTTP.new("https://api.github.com/graphql") do
     def headers(context)
@@ -96,9 +38,8 @@ module GitHub
     Schema = GraphQL::Client.load_schema("lib/github/graphql/schema.json")
   end
 
-  # Client = GraphQL::Client.new(schema: "lib/github/graphql/schema.json", execute: HTTP)
   Client = GraphQL::Client.new(schema: Schema, execute: HTTP)
-  Query = GitHub::Client.parse <<-'QUERY3'
+  Query = GitHub::Client.parse <<-'QUERY'
     query {
       query1: repositoryOwner(login: "eliotsykes") {
         repository(name: "rspec-rails-examples") {
@@ -118,7 +59,7 @@ module GitHub
       descriptionHTML
       homepageURL
     }
-  QUERY3
+  QUERY
 end
 
 variables = {}
@@ -140,7 +81,3 @@ response.data.data.each do |query_id, result|
   end
   puts '-'*80
 end
-
-# p response.data
-# puts response.data.repository_owner.repository.data.values.join("\n")
-# p response.data.repository_owner.repository.description
