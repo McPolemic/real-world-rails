@@ -14,7 +14,7 @@ module Kernel
 end
 
 class Repo
-  REPO_PATTERN = %r{url = git@github.com:(.+)/(.+)\.git}
+  REPO_PATTERN = %r{url = git@github.com:(?<login>.+)/(?<name>.+)\.git}
 
   attr_accessor :login, :name
 
@@ -24,8 +24,8 @@ class Repo
   end
 
   def self.all
-    @repos ||= File.read('.gitmodules').scan(REPO_PATTERN).each_with_index.map do |repo|
-      new(login: repo[0], name: repo[1])
+    @repos ||= File.read('.gitmodules').scan(REPO_PATTERN).map do |login, name|
+      new(login: login, name: name)
     end
   end
 
