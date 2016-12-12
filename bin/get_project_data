@@ -13,11 +13,32 @@ module Kernel
   end
 end
 
-module GitHub
+class Repo
   REPO_PATTERN = %r{url = git@github.com:(.+)/(.+)\.git}
-  REPOS = File.read('.gitmodules').scan(REPO_PATTERN).each_with_index.map do |repo|
-    { login: repo[0], name: repo[1] }
+
+  attr_accessor :login, :name
+
+  def initialize(login:, name:)
+    self.login = login
+    self.name = name
   end
+
+  def self.all
+    @repos ||= File.read('.gitmodules').scan(REPO_PATTERN).each_with_index.map do |repo|
+      new(login: repo[0], name: repo[1])
+    end
+  end
+
+  def to_s
+    "Repo: https://github.com/#{login}/#{name}"
+  end
+end
+
+class Project
+  attr_accessor :homepage_url, :description, :description_html, :repo
+end
+
+module GitHub
 
   HTTP = GraphQL::Client::HTTP.new("https://api.github.com/graphql") do
     def headers(context)
@@ -47,11 +68,11 @@ module GitHub
 
   # TODO: Use each_slice(29) to go through 29 at a time to avoid
   #       exceeding query complexity limit.
-  query_body = REPOS[0..29].each_with_index.inject('') do |q, (repo, i)|
+  query_body = Repo.all[0..29].each_with_index.inject('') do |q, (repo, i)|
     query_id = "query#{i}"
     q << <<-QUERY
-      #{query_id}: repositoryOwner(login: "#{repo[:login]}") {
-        repository(name: "#{repo[:name]}") {
+      #{query_id}: repositoryOwner(login: "#{repo.login}") {
+        repository(name: "#{repo.name}") {
           ...RepoFragment
         }
       }
@@ -70,6 +91,7 @@ module GitHub
       homepageURL
     }
   QUERY
+
 end
 
 variables = {}
@@ -85,7 +107,7 @@ end
 response.data.data.each_with_index do |(query_id, result), i|
   puts query_id
   if result.nil? || result['repository'].nil?
-    puts "No Result for #{GitHub::REPOS[i]}"
+    puts "No Result for #{Repo.all[i]}"
   else
     result['repository'].each do |field, value|
       puts "#{field}: #{value}"
