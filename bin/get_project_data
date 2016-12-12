@@ -65,53 +65,60 @@ module GitHub
   end
 
   Client = GraphQL::Client.new(schema: Schema, execute: HTTP)
+  Client.allow_dynamic_queries = true
 
-  # TODO: Use each_slice(29) to go through 29 at a time to avoid
-  #       exceeding query complexity limit.
-  query_body = Repo.all[0..29].each_with_index.inject('') do |q, (repo, i)|
-    query_id = "query#{i}"
-    q << <<-QUERY
-      #{query_id}: repositoryOwner(login: "#{repo.login}") {
-        repository(name: "#{repo.name}") {
-          ...RepoFragment
+  def self.fetch_all
+    variables = {}
+    client_context = { access_token: ENV['GITHUB_ACCESS_TOKEN'] }
+
+    Repo.all.each_slice(29) do |repos|
+      # TODO: Use each_slice(29) to go through 29 at a time to avoid
+      #       exceeding query complexity limit.
+      query_body = repos.each_with_index.inject('') do |q, (repo, i)|
+        query_id = "query#{i}"
+        q << <<-QUERY_BODY
+          #{query_id}: repositoryOwner(login: "#{repo.login}") {
+            repository(name: "#{repo.name}") {
+              ...RepoFragment
+            }
+          }
+        QUERY_BODY
+      end
+
+      query = GitHub::Client.parse <<-QUERY
+        query {
+          #{query_body}
         }
-      }
-    QUERY
-  end
 
-  Query = GitHub::Client.parse <<-QUERY
-    query {
-      #{query_body}
-    }
+        fragment RepoFragment on Repository {
+          name
+          description
+          descriptionHTML
+          homepageURL
+        }
+      QUERY
 
-    fragment RepoFragment on Repository {
-      name
-      description
-      descriptionHTML
-      homepageURL
-    }
-  QUERY
+      response = GitHub::Client.query(query, variables: variables, context: client_context)
 
-end
+      if response.errors.any?
+        error_msg = response.errors.messages.values.join("/n")
+        raise error_msg
+      end
 
-variables = {}
-client_context = { access_token: ENV['GITHUB_ACCESS_TOKEN'] }
-
-response = GitHub::Client.query(GitHub::Query, variables: variables, context: client_context)
-
-if response.errors.any?
-  error_msg = response.errors.messages.values.join("/n")
-  raise error_msg
-end
-
-response.data.data.each_with_index do |(query_id, result), i|
-  puts query_id
-  if result.nil? || result['repository'].nil?
-    puts "No Result for #{Repo.all[i]}"
-  else
-    result['repository'].each do |field, value|
-      puts "#{field}: #{value}"
+      response.data.data.each_with_index do |(query_id, result), i|
+        puts query_id
+        if result.nil? || result['repository'].nil?
+          puts "No Result for #{repos[i]}"
+        else
+          result['repository'].each do |field, value|
+            puts "#{field}: #{value}"
+          end
+        end
+        puts '-'*80
+      end
     end
   end
-  puts '-'*80
+
 end
+
+GitHub.fetch_all
